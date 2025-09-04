@@ -1,35 +1,41 @@
+// screens/ScanJoinScreen.js
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Alert } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { requestJoin, subscribeRoom } from '../services/rooms';
+import { getOrCreateRoom } from '../services/rooms';
 
 export default function ScanJoinScreen({ route, navigation }) {
-  const { identity } = route.params || {};
+  const { identity } = route.params || {}; // joiner’s identity
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
 
   useEffect(() => {
-    if (!permission) {
-      requestPermission();
-    }
+    if (!permission) requestPermission();
   }, [permission]);
 
   const handleBarCodeScanned = async ({ data }) => {
     if (scanned) return;
     setScanned(true);
+
     try {
       const payload = JSON.parse(data);
-      if (payload?.type !== 'joinRoom' || !payload?.roomId) throw new Error('Invalid QR');
-      await requestJoin(payload.roomId, { username: identity.username, userId: identity.userId });
-      const unsub = subscribeRoom(payload.roomId, (room) => {
-        if (!room) return;
-        if (room.status === 'active') {
-          unsub();
-          navigation.replace('Chat', { roomId: room.roomId, me: identity, other: room.inviter });
-        }
+      if (payload?.type !== 'joinRoom' || !payload?.inviter) {
+        throw new Error('Invalid QR');
+      }
+
+      const inviter = payload.inviter;
+      const joiner = identity;
+
+      const { roomId } = await getOrCreateRoom({ inviter, joiner });
+
+      // Joiner navigates immediately
+      navigation.replace('Chat', {
+        roomId,
+        me: joiner,
+        other: inviter,
       });
     } catch (e) {
-      Alert.alert('Scan failed', e.message);
+      Alert.alert('Scan failed', e?.message || 'Unknown error');
       setScanned(false);
     }
   };
@@ -42,9 +48,7 @@ export default function ScanJoinScreen({ route, navigation }) {
       <CameraView
         style={StyleSheet.absoluteFillObject}
         facing="back"
-        barcodeScannerSettings={{
-          barcodeTypes: ["qr"], // only QR codes
-        }}
+        barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
         onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
       />
       {!scanned ? (
@@ -69,4 +73,5 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
 });
+
 
