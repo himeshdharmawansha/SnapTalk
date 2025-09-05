@@ -1,40 +1,41 @@
-import React, { useEffect, useState } from 'react';
+// screens/CreateRoomScreen.js
+import React, { useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
-import { createRoom, subscribeRoom, acceptJoin } from '../services/rooms';
+import { subscribeInviterActiveRoom, clearInviterActiveRoom } from '../services/rooms';
 
 export default function CreateRoomScreen({ route, navigation }) {
   const { identity } = route.params || {};
-  const [roomId, setRoomId] = useState(null);
-  const [room, setRoom] = useState(null);
+
+  // QR contains ONLY inviter info (no room created yet)
+  const payload = JSON.stringify({
+    type: 'joinRoom',
+    inviter: identity,
+  });
 
   useEffect(() => {
-    (async () => {
-      const { roomId: id } = await createRoom({ username: identity.username, userId: identity.userId });
-      setRoomId(id);
-      const unsub = subscribeRoom(id, setRoom);
-      return () => unsub && unsub();
-    })();
-  }, []);
+    // listen for the pointer doc: users/{inviterId}/activeRoom/current
+    const unsub = subscribeInviterActiveRoom(identity.userId, (pointer) => {
+      if (!pointer?.roomId || !pointer?.other) return;
+      // Navigate once someone scanned and room was created/reused
+      navigation.replace('Chat', {
+        roomId: pointer.roomId,
+        me: identity,
+        other: pointer.other,
+      });
+      // Optional: clear pointer; comment this out if you want to keep it
+      clearInviterActiveRoom(identity.userId);
+    });
 
-  useEffect(() => {
-    if (room && room.status === 'requested') {
-      // Auto-accept for simplicity; could add manual accept screen instead
-      acceptJoin(room.roomId);
-      navigation.replace('Chat', { roomId: room.roomId, me: identity, other: room.invitee });
-    }
-  }, [room]);
-
-  if (!roomId) return null;
-
-  const payload = JSON.stringify({ type: 'joinRoom', roomId, inviter: identity });
+    return () => unsub && unsub();
+  }, [identity?.userId]);
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Show this QR to your friend</Text>
       <QRCode value={payload} size={220} />
-      <Text style={styles.code}>Room: {roomId}</Text>
-      <Text>Waiting for join request...</Text>
+      <Text style={styles.code}>User: {identity?.username}</Text>
+      <Text>Waiting for someone to scan...</Text>
     </View>
   );
 }
@@ -44,5 +45,4 @@ const styles = StyleSheet.create({
   title: { fontSize: 18, marginBottom: 12 },
   code: { marginTop: 12, color: '#555' },
 });
-
 

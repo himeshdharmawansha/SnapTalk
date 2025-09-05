@@ -22,3 +22,4 @@ service cloud.firestore {
 Replace with stricter rules as needed, e.g. restricting updates to inviter/invitee IDs once set.
 
 
+
